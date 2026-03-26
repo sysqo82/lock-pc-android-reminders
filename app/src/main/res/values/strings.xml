@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LockPC Reminders</string>
+    <string name="task_reminders">Task Reminders</string>
+    <string name="mark_completed">Mark Completed</string>
+    <string name="pending">Pending</string>
+    <string name="completed">Completed</string>
+    <string name="dismissed">Dismissed</string>
+    <string name="location_service">Location Service</string>
+    <string name="tracking_device">Tracking device location...</string>
+</resources>

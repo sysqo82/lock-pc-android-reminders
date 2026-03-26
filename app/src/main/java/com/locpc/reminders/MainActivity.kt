@@ -1,0 +1,373 @@
+package com.locpc.reminders
+
+import android.Manifest
+import android.app.AlarmManager
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.widget.Button
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.locpc.reminders.api.ApiManager
+import com.locpc.reminders.data.Reminder
+import com.locpc.reminders.ui.ReminderAdapter
+import com.locpc.reminders.util.NotificationHelper
+import com.locpc.reminders.worker.ReminderSyncWorker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.util.concurrent.TimeUnit
+
+class MainActivity : AppCompatActivity() {
+
+    private val scope = CoroutineScope(Dispatchers.Main)
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var reminderAdapter: ReminderAdapter
+    private lateinit var logoutButton: Button
+    private val reminders = mutableListOf<Reminder>()
+
+    private val pollHandler = Handler(Looper.getMainLooper())
+    private val pollRunnable = object : Runnable {
+        override fun run() {
+            fetchReminders()
+            pollHandler.postDelayed(this, POLL_INTERVAL_MS)
+        }
+    }
+
+    companion object {
+        private const val PERMISSION_REQUEST_CODE = 100
+        private const val POLL_INTERVAL_MS = 15_000L
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Dark icons on light background (Android 15+ edge-to-edge)
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
+
+        // Check if user is logged in
+        if (!ApiManager.isLoggedIn()) {
+            Timber.d("User not logged in, navigating to login")
+            navigateToLogin()
+            return
+        }
+
+        setContentView(R.layout.activity_main)
+
+        Timber.d("MainActivity: onCreate called")
+
+        // Request necessary permissions
+        requestPermissions()
+
+        // Initialize UI
+        setupRecyclerView()
+        setupLogoutButton()
+
+        // Show cached data immediately, live data comes via onResume polling
+        loadLocalReminders()
+
+        // Schedule background sync via WorkManager (runs every 15 min when app is closed)
+        scheduleBackgroundSync()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check exact alarm permission each time we come back (user may have just granted it in Settings)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(AlarmManager::class.java)
+            if (alarmManager.canScheduleExactAlarms()) {
+                // Permission is now granted — reschedule any reminders that were previously skipped
+                val notificationHelper = NotificationHelper(this)
+                for (reminder in reminders) {
+                    notificationHelper.scheduleReminder(reminder)
+                }
+            }
+        }
+        // "Display over other apps" (SYSTEM_ALERT_WINDOW) is explicitly listed in Android's
+        // Background Activity Launch allowlist, making it the most reliable way to show a
+        // full-screen alarm on all Android 13+ devices including OEM firmwares (Samsung, etc.).
+        if (!Settings.canDrawOverlays(this)) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Permission needed for full-screen alerts")
+                .setMessage("To show reminders as full-screen alerts when your phone is in use, please enable \"Display over other apps\" for LockPC Reminders.\n\nWithout this, reminders only appear as a notification at the top of the screen.")
+                .setCancelable(true)
+                .setPositiveButton("Open Settings") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                    })
+                }
+                .setNegativeButton("Not now", null)
+                .show()
+        }
+        // Android 14+ also requires USE_FULL_SCREEN_INTENT to be explicitly granted.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            if (!nm.canUseFullScreenIntent()) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Full-screen intent permission needed")
+                    .setMessage("On Android 14+, \"Alarms & reminders\" must also be enabled in Settings for full-screen alerts.\n\nTap OK to open Settings.")
+                    .setCancelable(true)
+                    .setPositiveButton("Open Settings") { _, _ ->
+                        startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                            data = Uri.fromParts("package", packageName, null)
+                        })
+                    }
+                    .setNegativeButton("Not now", null)
+                    .show()
+            }
+        }
+        // Connect Socket.IO for real-time reminder pushes
+        SocketManager.onRemindersUpdated = { updated -> applyReminders(updated) }
+        SocketManager.connect(NetworkClient.getCookieHeader(ApiConfig.BASE_URL))
+        // Start foreground polling immediately when activity is visible
+        pollHandler.post(pollRunnable)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Stop polling and socket when activity goes to background (WorkManager takes over)
+        pollHandler.removeCallbacks(pollRunnable)
+        SocketManager.disconnect()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
+        }
+    }
+
+    private fun setupRecyclerView() {
+        recyclerView = findViewById(R.id.reminderRecyclerView)
+        reminderAdapter = ReminderAdapter(reminders)
+        recyclerView.adapter = reminderAdapter
+        recyclerView.layoutManager = LinearLayoutManager(this)
+    }
+
+    private fun setupLogoutButton() {
+        logoutButton = findViewById(R.id.logoutButton)
+        logoutButton.setOnClickListener {
+            performLogout()
+        }
+    }
+
+    private fun loadLocalReminders() {
+        val sharedPreferences = getSharedPreferences("locpc_reminders", MODE_PRIVATE)
+        val remindersJson = sharedPreferences.getString("reminders_list", null)
+
+        if (!remindersJson.isNullOrEmpty()) {
+            try {
+                val type = object : TypeToken<List<Reminder>>() {}.type
+                val loadedReminders: List<Reminder> = Gson().fromJson(remindersJson, type)
+                reminders.clear()
+                reminders.addAll(loadedReminders)
+                reminderAdapter.notifyDataSetChanged()
+                Timber.d("Loaded ${reminders.size} reminders from local storage")
+            } catch (e: Exception) {
+                Timber.e(e, "Error loading reminders from local storage")
+            }
+        }
+    }
+
+    private fun fetchReminders() {
+        scope.launch {
+            try {
+                val apiService = ApiManager.getApiService()
+                val response = apiService.getReminders()
+
+                if (response.isSuccessful) {
+                    applyReminders(response.body() ?: emptyList())
+                } else if (response.code() == 401) {
+                    Timber.e("fetchReminders: 401 Unauthorized")
+                } else {
+                    Timber.e("Failed to fetch reminders: ${response.code()} ${response.message()}")
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Error fetching reminders")
+            }
+        }
+    }
+
+    /** Apply a fresh reminder list from any source (HTTP poll or Socket.IO push). */
+    private fun applyReminders(updated: List<Reminder>) {
+        reminders.clear()
+        reminders.addAll(updated)
+        reminderAdapter.notifyDataSetChanged()
+        Timber.d("Reminders applied: ${updated.size} items")
+
+        getSharedPreferences("locpc_reminders", MODE_PRIVATE).edit()
+            .putString("reminders_list", Gson().toJson(updated))
+            .putLong("last_sync", System.currentTimeMillis())
+            .apply()
+
+        val notificationHelper = NotificationHelper(this)
+        for (reminder in updated) {
+            notificationHelper.scheduleReminder(reminder)
+        }
+    }
+
+    private fun scheduleBackgroundSync() {
+        val request = PeriodicWorkRequestBuilder<ReminderSyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "reminder_sync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    private fun performLogout() {
+        scope.launch {
+            try {
+                logoutButton.isEnabled = false
+
+                // Cancel all scheduled alarms before clearing session
+                NotificationHelper(this@MainActivity).cancelAllAlarms()
+
+                // Stop the background sync worker
+                WorkManager.getInstance(this@MainActivity).cancelUniqueWork("reminder_sync")
+
+                // Clear locally cached reminders
+                getSharedPreferences("locpc_reminders", MODE_PRIVATE).edit()
+                    .remove("reminders_list")
+                    .remove("last_sync")
+                    .apply()
+
+                // Disconnect socket
+                SocketManager.disconnect()
+
+                // Call logout API to clear server-side session
+                ApiManager.logout()
+
+                Toast.makeText(this@MainActivity, "Logged out", Toast.LENGTH_SHORT).show()
+                navigateToLogin()
+            } catch (e: Exception) {
+                Timber.e(e, "Error during logout")
+                Toast.makeText(
+                    this@MainActivity,
+                    "Logout error: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                logoutButton.isEnabled = true
+            }
+        }
+    }
+
+    private fun navigateToLogin() {
+        val intent = Intent(this, LoginActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+    }
+
+    private fun requestPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+
+        // Location permissions
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+
+        // Notification permission (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsToRequest.toTypedArray(),
+                PERMISSION_REQUEST_CODE
+            )
+        }
+
+        // Exact alarm permission (Android 12+) — requires a manual Settings grant
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(AlarmManager::class.java)
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Toast.makeText(
+                    this,
+                    "Allow \"Alarms & Reminders\" for on-time notifications",
+                    Toast.LENGTH_LONG
+                ).show()
+                startActivity(
+                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                    }
+                )
+            }
+        }
+
+        // Battery optimization — must be disabled for alarms to fire reliably
+        val pm = getSystemService(android.os.PowerManager::class.java)
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            Toast.makeText(
+                this,
+                "Disable battery optimization so reminders fire on time",
+                Toast.LENGTH_LONG
+            ).show()
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            })
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            for ((i, permission) in permissions.withIndex()) {
+                if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    Timber.d("Permission granted: $permission")
+                } else {
+                    Timber.d("Permission denied: $permission")
+                }
+            }
+        }
+    }
+}

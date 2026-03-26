@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="@color/background">
+
+    <ImageView
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:src="@drawable/ic_notification"
+        android:tint="@color/primary"
+        android:layout_marginBottom="28dp"
+        android:contentDescription="Reminder" />
+
+    <TextView
+        android:id="@+id/alertTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:textColor="@color/textPrimary"
+        android:gravity="center"
+        android:text="Reminder"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:id="@+id/alertDescription"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:textColor="@color/textSecondary"
+        android:gravity="center"
+        android:visibility="gone"
+        android:layout_marginBottom="48dp" />
+
+    <Button
+        android:id="@+id/dismissButton"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="DISMISS"
+        android:textSize="16sp"
+        android:letterSpacing="0.08" />
+
+</LinearLayout>

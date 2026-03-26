@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.locpc.reminders">
+
+    <!-- Required Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.BIND_JOB_SERVICE" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_descriptor"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LockPCReminders"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".LoginActivity"
+            android:exported="true"
+            android:theme="@style/Theme.LockPCReminders">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.LockPCReminders" />
+
+        <!-- Foreground Location Service -->
+        <service
+            android:name=".service.LocationService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
+
+        <!-- Reminder Alert Foreground Service -->
+        <service
+            android:name=".service.ReminderAlertService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
+        <!-- Reminder Sync Service -->
+        <service
+            android:name=".service.ReminderSyncService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <activity
+            android:name=".ReminderAlertActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.LockPCReminders" />
+
+        <!-- Broadcast Receiver for Reminder Alarms -->
+        <receiver
+            android:name=".receiver.AlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.locpc.reminders.ACTION_FIRE_ALARM" />
+                <action android:name="com.locpc.reminders.ACTION_DISMISS_REMINDER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Broadcast Receiver for Boot Complete -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Broadcast Receiver for Remote Commands -->
+        <receiver
+            android:name=".receiver.RemoteCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.locpc.reminders.LOCATE_DEVICE" />
+                <action android:name="com.locpc.reminders.SYNC_REMINDERS" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>
