@@ -208,17 +208,40 @@ class MainActivity : AppCompatActivity() {
 
     /** Apply a fresh reminder list from any source (HTTP poll or Socket.IO push). */
     private fun applyReminders(updated: List<Reminder>) {
+        val prefs = getSharedPreferences("locpc_reminders", MODE_PRIVATE)
+        val notificationHelper = NotificationHelper(this)
+
+        // Cancel alarms for any reminders that were removed
+        val oldJson = prefs.getString("reminders_list", null)
+        if (!oldJson.isNullOrBlank()) {
+            try {
+                val type = object : TypeToken<List<Reminder>>() {}.type
+                val oldReminders: List<Reminder> = Gson().fromJson(oldJson, type)
+                val updatedIds = updated.map { it.id }.toSet()
+                val editor = prefs.edit()
+                for (old in oldReminders) {
+                    if (old.id !in updatedIds) {
+                        notificationHelper.cancelReminderAlarms(old.id)
+                        editor.remove("notified_${old.id}")
+                        Timber.d("Cancelled alarms for removed reminder: ${old.id}")
+                    }
+                }
+                editor.apply()
+            } catch (e: Exception) {
+                Timber.e(e, "applyReminders: failed to parse old reminders for diff")
+            }
+        }
+
         reminders.clear()
         reminders.addAll(updated)
         reminderAdapter.notifyDataSetChanged()
         Timber.d("Reminders applied: ${updated.size} items")
 
-        getSharedPreferences("locpc_reminders", MODE_PRIVATE).edit()
+        prefs.edit()
             .putString("reminders_list", Gson().toJson(updated))
             .putLong("last_sync", System.currentTimeMillis())
             .apply()
 
-        val notificationHelper = NotificationHelper(this)
         for (reminder in updated) {
             notificationHelper.scheduleReminder(reminder)
         }
