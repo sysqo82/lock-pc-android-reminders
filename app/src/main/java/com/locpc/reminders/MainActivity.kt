@@ -101,22 +101,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        // "Display over other apps" (SYSTEM_ALERT_WINDOW) is explicitly listed in Android's
-        // Background Activity Launch allowlist, making it the most reliable way to show a
-        // full-screen alarm on all Android 13+ devices including OEM firmwares (Samsung, etc.).
-        if (!Settings.canDrawOverlays(this)) {
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("Permission needed for full-screen alerts")
-                .setMessage("To show reminders as full-screen alerts when your phone is in use, please enable \"Display over other apps\" for LockPC Reminders.\n\nWithout this, reminders only appear as a notification at the top of the screen.")
-                .setCancelable(true)
-                .setPositiveButton("Open Settings") { _, _ ->
-                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                        data = Uri.fromParts("package", packageName, null)
-                    })
-                }
-                .setNegativeButton("Not now", null)
-                .show()
-        }
         // Android 14+ also requires USE_FULL_SCREEN_INTENT to be explicitly granted.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val nm = getSystemService(android.app.NotificationManager::class.java)
