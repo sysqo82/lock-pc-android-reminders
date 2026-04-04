@@ -46,7 +46,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
         // Path 1: start the activity directly here, while the setAlarmClock BAL exemption window
         // is guaranteed active (we are inside onReceive()). This is the most reliable path on all
-        // Android 13+ devices. If SYSTEM_ALERT_WINDOW is also granted this is unconditionally allowed.
+        // Android 13+ devices.
         try {
             context.startActivity(
                 Intent(context, com.locpc.reminders.ReminderAlertActivity::class.java).apply {
