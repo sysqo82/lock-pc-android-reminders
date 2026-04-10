@@ -120,6 +120,7 @@ class MainActivity : AppCompatActivity() {
         }
         // Connect Socket.IO for real-time reminder pushes
         SocketManager.onRemindersUpdated = { updated -> applyReminders(updated) }
+        SocketManager.onLocateDevice = { startLocationService() }
         SocketManager.connect(NetworkClient.getCookieHeader(ApiConfig.BASE_URL))
         // Start foreground polling immediately when activity is visible
         pollHandler.post(pollRunnable)
@@ -281,6 +282,15 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 logoutButton.isEnabled = true
             }
+        }
+    }
+
+    private fun startLocationService() {
+        val intent = Intent(this, com.locpc.reminders.service.LocationService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
     }
 
