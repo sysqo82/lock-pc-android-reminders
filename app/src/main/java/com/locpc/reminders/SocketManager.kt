@@ -18,6 +18,9 @@ object SocketManager {
     /** Called on the main thread whenever the server pushes a fresh reminder list. */
     var onRemindersUpdated: ((List<Reminder>) -> Unit)? = null
 
+    /** Called on the main thread when the server requests a one-shot location fix. */
+    var onLocateDevice: (() -> Unit)? = null
+
     fun connect(cookieHeader: String?) {
         if (socket?.connected() == true) return
 
@@ -48,6 +51,11 @@ object SocketManager {
                 } catch (e: Exception) {
                     Timber.e(e, "SocketManager: failed to parse reminder_update")
                 }
+            }
+
+            s.on("locate_device") {
+                Timber.d("SocketManager: locate_device received")
+                mainHandler.post { onLocateDevice?.invoke() }
             }
 
             s.on(Socket.EVENT_DISCONNECT) { Timber.d("SocketManager: disconnected") }
