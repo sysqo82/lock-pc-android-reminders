@@ -121,16 +121,18 @@ class MainActivity : AppCompatActivity() {
         // Connect Socket.IO for real-time reminder pushes
         SocketManager.onRemindersUpdated = { updated -> applyReminders(updated) }
         SocketManager.onLocateDevice = { startLocationService() }
-        SocketManager.connect(NetworkClient.getCookieHeader(ApiConfig.BASE_URL))
+        SocketManager.onForceLogout = { performLogout() }
+        val deviceId = com.locpc.reminders.util.LocationHelper(this).getDeviceId()
+        SocketManager.connect(NetworkClient.getCookieHeader(ApiConfig.BASE_URL), deviceId)
         // Start foreground polling immediately when activity is visible
         pollHandler.post(pollRunnable)
     }
 
     override fun onPause() {
         super.onPause()
-        // Stop polling and socket when activity goes to background (WorkManager takes over)
+        // Stop polling when activity goes to background (WorkManager takes over)
+        // Do NOT disconnect socket — force_logout events must be receivable at all times
         pollHandler.removeCallbacks(pollRunnable)
-        SocketManager.disconnect()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

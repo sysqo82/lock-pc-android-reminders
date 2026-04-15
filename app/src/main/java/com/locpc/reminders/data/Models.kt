@@ -66,7 +66,9 @@ data class LocationUpdate(
     @SerializedName("timestamp")
     val timestamp: Long = System.currentTimeMillis(),
     @SerializedName("deviceId")
-    val deviceId: String
+    val deviceId: String,
+    @SerializedName("deviceModel")
+    val deviceModel: String
 )
 
 data class LocationResponse(

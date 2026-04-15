@@ -61,8 +61,9 @@ class LocationService : Service() {
                         val locationUpdate = LocationUpdate(
                             latitude = location.first,
                             longitude = location.second,
-                            accuracy = 0f,
-                            deviceId = deviceId
+                            accuracy = location.third,
+                            deviceId = deviceId,
+                            deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
                         )
                         try {
                             val apiService = ApiManager.getApiService()
