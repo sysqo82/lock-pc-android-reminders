@@ -4,10 +4,11 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 import kotlin.coroutines.resume
@@ -18,7 +19,7 @@ class LocationHelper(private val context: Context) {
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
-    suspend fun getCurrentLocation(): Pair<Double, Double>? = suspendCancellableCoroutine { continuation ->
+    suspend fun getCurrentLocation(): Triple<Double, Double, Float>? = suspendCancellableCoroutine { continuation ->
         if (!hasLocationPermission()) {
             Timber.w("Location permission not granted")
             continuation.resume(null)
@@ -26,17 +27,30 @@ class LocationHelper(private val context: Context) {
         }
 
         try {
-            val locationRequest = LocationRequest.Builder(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                5000L  // Update interval
-            ).build()
-
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 if (location != null) {
-                    continuation.resume(Pair(location.latitude, location.longitude))
+                    continuation.resume(Triple(location.latitude, location.longitude, location.accuracy))
                 } else {
-                    Timber.d("Last location is null, requesting new location update")
-                    continuation.resume(null)
+                    Timber.d("Last location is null, requesting fresh location")
+                    val cts = CancellationTokenSource()
+                    continuation.invokeOnCancellation { cts.cancel() }
+                    val request = CurrentLocationRequest.Builder()
+                        .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                        .setMaxUpdateAgeMillis(0)
+                        .build()
+                    fusedLocationClient.getCurrentLocation(request, cts.token)
+                        .addOnSuccessListener { fresh ->
+                            if (fresh != null) {
+                                continuation.resume(Triple(fresh.latitude, fresh.longitude, fresh.accuracy))
+                            } else {
+                                Timber.w("Fresh location also null")
+                                continuation.resume(null)
+                            }
+                        }
+                        .addOnFailureListener { exception ->
+                            Timber.e(exception, "Failed to get fresh location")
+                            continuation.resumeWithException(exception)
+                        }
                 }
             }.addOnFailureListener { exception ->
                 Timber.e(exception, "Failed to get location")

@@ -14,6 +14,7 @@ object SocketManager {
 
     private var socket: Socket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var ownDeviceId: String? = null
 
     /** Called on the main thread whenever the server pushes a fresh reminder list. */
     var onRemindersUpdated: ((List<Reminder>) -> Unit)? = null
@@ -21,7 +22,11 @@ object SocketManager {
     /** Called on the main thread when the server requests a one-shot location fix. */
     var onLocateDevice: (() -> Unit)? = null
 
-    fun connect(cookieHeader: String?) {
+    /** Called on the main thread when the admin forces a logout for this device. */
+    var onForceLogout: (() -> Unit)? = null
+
+    fun connect(cookieHeader: String?, deviceId: String? = null) {
+        ownDeviceId = deviceId
         if (socket?.connected() == true) return
 
         try {
@@ -56,6 +61,22 @@ object SocketManager {
             s.on("locate_device") {
                 Timber.d("SocketManager: locate_device received")
                 mainHandler.post { onLocateDevice?.invoke() }
+            }
+
+            s.on("force_logout") { args ->
+                try {
+                    val payload = args.firstOrNull()?.let { it as? JSONObject }
+                    val targetDeviceId = payload?.optString("deviceId")?.takeIf { it.isNotEmpty() }
+                    // Only act if this event targets our device specifically, or is a broadcast
+                    if (targetDeviceId == null || targetDeviceId == ownDeviceId) {
+                        Timber.d("SocketManager: force_logout received for deviceId=$targetDeviceId")
+                        mainHandler.post { onForceLogout?.invoke() }
+                    } else {
+                        Timber.d("SocketManager: force_logout ignored (target=$targetDeviceId, ours=$ownDeviceId)")
+                    }
+                } catch (e: Exception) {
+                    Timber.e(e, "SocketManager: failed to parse force_logout")
+                }
             }
 
             s.on(Socket.EVENT_DISCONNECT) { Timber.d("SocketManager: disconnected") }
