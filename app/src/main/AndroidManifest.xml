@@ -6,9 +6,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Required on Android 10+ to access location from a service started while the app is not visible -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Required for foregroundServiceType="dataSync" (SocketService) on Android 14+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.BIND_JOB_SERVICE" />
@@ -42,6 +46,13 @@
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.LockPCReminders" />
+
+        <!-- Persistent Socket.IO service — keeps the connection alive in background.
+             Uses dataSync type, appropriate for maintaining a persistent network socket. -->
+        <service
+            android:name=".service.SocketService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
 
         <!-- Foreground Location Service -->
         <service
