@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.locpc.reminders.api.ApiManager
 import com.locpc.reminders.data.Reminder
+import com.locpc.reminders.service.SocketService
 import com.locpc.reminders.util.NotificationHelper
 import timber.log.Timber
 
@@ -33,7 +34,8 @@ class BootReceiver : BroadcastReceiver() {
             }
 
             if (ApiManager.isLoggedIn()) {
-                Timber.d("BootReceiver: user is logged in (location is on-demand via socket)")
+                Timber.d("BootReceiver: user is logged in, starting SocketService")
+                SocketService.start(context)
             }
         }
     }

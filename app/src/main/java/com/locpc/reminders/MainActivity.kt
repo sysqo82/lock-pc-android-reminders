@@ -118,12 +118,14 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
-        // Connect Socket.IO for real-time reminder pushes
+        // Connect Socket.IO for real-time reminder pushes.
+        // onLocateDevice is intentionally NOT set here — SocketService owns it so the
+        // locate_device event is handled even when MainActivity is in the background.
         SocketManager.onRemindersUpdated = { updated -> applyReminders(updated) }
-        SocketManager.onLocateDevice = { startLocationService() }
         SocketManager.onForceLogout = { performLogout() }
-        val deviceId = com.locpc.reminders.util.LocationHelper(this).getDeviceId()
-        SocketManager.connect(NetworkClient.getCookieHeader(ApiConfig.BASE_URL), deviceId)
+        // Start (or restart) the persistent socket foreground service. It handles
+        // connect() and the locate_device callback internally.
+        com.locpc.reminders.service.SocketService.start(this)
         // Start foreground polling immediately when activity is visible
         pollHandler.post(pollRunnable)
     }
@@ -288,11 +290,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startLocationService() {
-        val intent = Intent(this, com.locpc.reminders.service.LocationService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
+        // On Android 12+ calling startForegroundService() from a background context throws
+        // ForegroundServiceStartNotAllowedException.  Use WorkManager expedited work instead,
+        // which internally manages the foreground service and is always allowed.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val request = androidx.work.OneTimeWorkRequestBuilder<com.locpc.reminders.worker.LocationWorker>()
+                .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+            androidx.work.WorkManager.getInstance(applicationContext)
+                .enqueueUniqueWork(
+                    "location_update",
+                    androidx.work.ExistingWorkPolicy.REPLACE,
+                    request
+                )
         } else {
-            startService(intent)
+            val intent = Intent(this, com.locpc.reminders.service.LocationService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
         }
     }
 
@@ -305,7 +322,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestPermissions() {
         val permissionsToRequest = mutableListOf<String>()
 
-        // Location permissions
+        // Location permissions (fine + coarse first, background must be separate on Android 11+)
         if (ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -320,6 +337,27 @@ class MainActivity : AppCompatActivity() {
             ) != PackageManager.PERMISSION_GRANTED
         ) {
             permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+
+        // ACCESS_BACKGROUND_LOCATION must be requested in its own separate dialog on Android 11+.
+        // Only request it when fine/coarse is already granted to avoid the system silently denying it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val fineGranted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            val bgGranted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (fineGranted && !bgGranted) {
+                // Separate request so Android shows the "Allow all the time" rationale.
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                    PERMISSION_REQUEST_CODE
+                )
+            } else if (!fineGranted) {
+                permissionsToRequest.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
         }
 
         // Notification permission (Android 13+)
