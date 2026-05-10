@@ -77,3 +77,16 @@ data class LocationResponse(
     @SerializedName("message")
     val message: String? = null
 )
+
+data class GeofenceZone(
+    @SerializedName("id")
+    val id: Int,
+    @SerializedName("name")
+    val name: String,
+    @SerializedName("latitude")
+    val latitude: Double,
+    @SerializedName("longitude")
+    val longitude: Double,
+    @SerializedName("radius_meters")
+    val radiusMeters: Int
+)

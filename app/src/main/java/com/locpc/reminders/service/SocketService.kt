@@ -17,8 +17,12 @@ import com.locpc.reminders.NetworkClient
 import com.locpc.reminders.R
 import com.locpc.reminders.SocketManager
 import com.locpc.reminders.api.ApiManager
+import com.locpc.reminders.util.GeofenceManager
 import com.locpc.reminders.util.LocationHelper
 import com.locpc.reminders.worker.LocationWorker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
@@ -49,6 +53,8 @@ class SocketService : Service() {
         }
     }
 
+    private val serviceScope = CoroutineScope(Dispatchers.IO)
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Timber.d("SocketService: onStartCommand")
         startForeground(NOTIFICATION_ID, createNotification())
@@ -61,6 +67,9 @@ class SocketService : Service() {
             // onRemindersUpdated and onForceLogout.
             SocketManager.onLocateDevice = { enqueueLocationWork() }
             SocketManager.connect(cookie, deviceId)
+
+            // Fetch geofence zones from server and (re-)register them
+            fetchAndRegisterGeofenceZones()
         }
 
         return START_STICKY
@@ -73,6 +82,27 @@ class SocketService : Service() {
             .build()
         WorkManager.getInstance(applicationContext)
             .enqueueUniqueWork("location_update", ExistingWorkPolicy.REPLACE, request)
+    }
+
+    private fun fetchAndRegisterGeofenceZones() {
+        serviceScope.launch {
+            try {
+                val response = ApiManager.getApiService().getGeofenceZones()
+                if (response.isSuccessful) {
+                    val zones = response.body() ?: emptyList()
+                    Timber.d("SocketService: fetched ${zones.size} geofence zone(s), registering")
+                    GeofenceManager.registerZones(applicationContext, zones)
+                } else {
+                    Timber.w("SocketService: getGeofenceZones returned ${response.code()}, using persisted zones")
+                    val persisted = GeofenceManager.loadPersistedZones(applicationContext)
+                    GeofenceManager.registerZones(applicationContext, persisted)
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "SocketService: failed to fetch geofence zones, using persisted zones")
+                val persisted = GeofenceManager.loadPersistedZones(applicationContext)
+                GeofenceManager.registerZones(applicationContext, persisted)
+            }
+        }
     }
 
     private fun createNotification(): Notification {
