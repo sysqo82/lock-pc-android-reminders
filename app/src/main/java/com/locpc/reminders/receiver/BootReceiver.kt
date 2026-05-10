@@ -8,6 +8,7 @@ import com.google.gson.reflect.TypeToken
 import com.locpc.reminders.api.ApiManager
 import com.locpc.reminders.data.Reminder
 import com.locpc.reminders.service.SocketService
+import com.locpc.reminders.util.GeofenceManager
 import com.locpc.reminders.util.NotificationHelper
 import timber.log.Timber
 
@@ -31,6 +32,15 @@ class BootReceiver : BroadcastReceiver() {
                 } catch (e: Exception) {
                     Timber.e(e, "BootReceiver: error rescheduling alarms")
                 }
+            }
+
+            // Re-register geofences from local cache so they are active before the
+            // network is fully available. SocketService will refresh from the server
+            // and call registerZones again once connected.
+            val persistedZones = GeofenceManager.loadPersistedZones(context)
+            if (persistedZones.isNotEmpty()) {
+                Timber.d("BootReceiver: re-registering ${persistedZones.size} persisted geofence(s)")
+                GeofenceManager.registerZones(context, persistedZones)
             }
 
             if (ApiManager.isLoggedIn()) {

@@ -56,6 +56,17 @@ class App : Application() {
                 enableVibration(false)
             }
             notificationManager?.createNotificationChannel(locationChannel)
+
+            // Geofence notification channel
+            val geofenceChannel = NotificationChannel(
+                CHANNEL_GEOFENCE,
+                "Geofence Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when entering a geofence zone"
+                enableVibration(true)
+            }
+            notificationManager?.createNotificationChannel(geofenceChannel)
         }
     }
 
@@ -65,5 +76,6 @@ class App : Application() {
 
         const val CHANNEL_REMINDERS = "reminders_channel"
         const val CHANNEL_LOCATION = "location_channel"
+        const val CHANNEL_GEOFENCE = "geofence_channel"
     }
 }

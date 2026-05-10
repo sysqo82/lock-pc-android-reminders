@@ -1,5 +1,6 @@
 package com.locpc.reminders.api
 
+import com.locpc.reminders.data.GeofenceZone
 import com.locpc.reminders.data.LocationResponse
 import com.locpc.reminders.data.LocationUpdate
 import com.locpc.reminders.data.Reminder
@@ -29,6 +30,9 @@ interface ApiService {
 
     @POST("api/location/update")
     suspend fun updateLocation(@Body location: LocationUpdate): Response<LocationResponse>
+
+    @GET("api/geofence-zones")
+    suspend fun getGeofenceZones(): Response<List<GeofenceZone>>
 
     @GET("logout")
     suspend fun logout(): Response<ResponseBody>

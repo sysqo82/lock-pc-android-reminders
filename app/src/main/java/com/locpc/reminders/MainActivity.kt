@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
     private val reminders = mutableListOf<Reminder>()
 
     private val pollHandler = Handler(Looper.getMainLooper())
+    private var bgLocationDialogShown = false
     private val pollRunnable = object : Runnable {
         override fun run() {
             fetchReminders()
@@ -118,6 +119,9 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
+        // Check background location permission — required for geofencing to work
+        checkBackgroundLocationPermission()
+
         // Connect Socket.IO for real-time reminder pushes.
         // onLocateDevice is intentionally NOT set here — SocketService owns it so the
         // locate_device event is handled even when MainActivity is in the background.
@@ -339,26 +343,8 @@ class MainActivity : AppCompatActivity() {
             permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
-        // ACCESS_BACKGROUND_LOCATION must be requested in its own separate dialog on Android 11+.
-        // Only request it when fine/coarse is already granted to avoid the system silently denying it.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val fineGranted = ContextCompat.checkSelfPermission(
-                this, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            val bgGranted = ContextCompat.checkSelfPermission(
-                this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            if (fineGranted && !bgGranted) {
-                // Separate request so Android shows the "Allow all the time" rationale.
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
-                    PERMISSION_REQUEST_CODE
-                )
-            } else if (!fineGranted) {
-                permissionsToRequest.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            }
-        }
+        // ACCESS_BACKGROUND_LOCATION must NEVER be batched with other permissions on Android 11+
+        // (the system silently denies it). It is handled separately in checkBackgroundLocationPermission().
 
         // Notification permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -421,10 +407,55 @@ class MainActivity : AppCompatActivity() {
             for ((i, permission) in permissions.withIndex()) {
                 if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
                     Timber.d("Permission granted: $permission")
+                    // If background location was just granted, re-register geofence zones immediately
+                    if (permission == Manifest.permission.ACCESS_BACKGROUND_LOCATION) {
+                        Timber.d("Background location granted — re-registering geofence zones")
+                        com.locpc.reminders.service.SocketService.start(this)
+                    }
                 } else {
                     Timber.d("Permission denied: $permission")
                 }
             }
         }
+    }
+
+    /**
+     * On Android 10+, geofences require "Allow all the time" (ACCESS_BACKGROUND_LOCATION).
+     * This permission must be requested in a separate step after foreground location is granted.
+     * Shows a rationale dialog so the user understands why, then opens the system permission page.
+     */
+    private fun checkBackgroundLocationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val fineGranted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!fineGranted) return // wait until foreground is granted first
+
+        val bgGranted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (bgGranted) return
+
+        // Only prompt once per session
+        if (bgLocationDialogShown) return
+        bgLocationDialogShown = true
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Background location required")
+            .setMessage(
+                "Geofence zones need \"Allow all the time\" location access so the app " +
+                "can alert you when you arrive in a zone even when the app is closed.\n\n" +
+                "On the next screen, select \"Allow all the time\"."
+            )
+            .setCancelable(false)
+            .setPositiveButton("Open Settings") { _, _ ->
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                    PERMISSION_REQUEST_CODE
+                )
+            }
+            .setNegativeButton("Not now", null)
+            .show()
     }
 }

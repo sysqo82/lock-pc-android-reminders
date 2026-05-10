@@ -32,8 +32,23 @@ object SecurePrefs {
             )
             Timber.d("SecurePrefs initialized successfully")
         } catch (e: Exception) {
-            Timber.e(e, "Error initializing SecurePrefs, using plain SharedPreferences fallback")
-            encryptedPrefs = context.getSharedPreferences("reminders_plain", Context.MODE_PRIVATE)
+            Timber.e(e, "Error initializing SecurePrefs — deleting corrupted prefs and retrying")
+            // The encrypted file is unreadable (e.g. app reinstalled, keystore key changed).
+            // Delete it so the next launch starts clean instead of retrying the bad file.
+            try {
+                context.deleteSharedPreferences("reminders_secure")
+                encryptedPrefs = EncryptedSharedPreferences.create(
+                    context,
+                    "reminders_secure",
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+                Timber.d("SecurePrefs re-created successfully after clearing corrupted file")
+            } catch (e2: Exception) {
+                Timber.e(e2, "SecurePrefs re-creation also failed, using plain SharedPreferences fallback")
+                encryptedPrefs = context.getSharedPreferences("reminders_plain", Context.MODE_PRIVATE)
+            }
         }
     }
 
