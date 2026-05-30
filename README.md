@@ -82,7 +82,7 @@ Required permissions are declared in AndroidManifest.xml:
 - `INTERNET` - Backend communication
 - `ACCESS_FINE_LOCATION` - Precise device location
 - `ACCESS_COARSE_LOCATION` - Approximate device location
-- `POST_NOTIFICATIONS` - Reminder notifications (Android 13+)
+- `POST_NOTIFICATIONS` - Reminder notifications
 - `FOREGROUND_SERVICE` - Background services
 - `RECEIVE_BOOT_COMPLETED` - Start after device boot
 
@@ -173,7 +173,7 @@ The admin app can:
 - Check logcat for Timber logs
 
 ### Notifications not showing
-- Verify notification permission is granted (Android 13+)
+- Verify notification permission is granted
 - Check notification channels are properly created
 - Verify reminder status is "pending"
 

@@ -35,8 +35,8 @@ class ReminderAlertService : Service() {
 
         // startForeground() makes this process "foreground", which grants an unconditional BAL
         // (Background Activity Launch) exemption. This means startActivity() below will ALWAYS
-        // succeed — even on Android 13/14 with the screen ON where setFullScreenIntent is
-        // suppressed to a HUD. This is the same approach used by Google Clock.
+        // succeed — even when the screen is ON where setFullScreenIntent might be suppressed.
+        // This is the same approach used by Google Clock.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(reminderId.hashCode(), notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE)
         } else {

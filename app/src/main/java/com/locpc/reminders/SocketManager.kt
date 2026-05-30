@@ -41,9 +41,19 @@ object SocketManager {
 
             val s = IO.socket(ApiConfig.BASE_URL.trimEnd('/'), opts)
 
-            s.on(Socket.EVENT_CONNECT) {
-                Timber.d("SocketManager: connected, identifying as dashboard")
+            val identifyEmitter = {
+                Timber.d("SocketManager: identifying as dashboard")
                 s.emit("identify", JSONObject().put("type", "dashboard"))
+            }
+
+            s.on(Socket.EVENT_CONNECT) {
+                Timber.d("SocketManager: connected")
+                identifyEmitter()
+            }
+
+            s.on("reconnect") {
+                Timber.d("SocketManager: reconnected after disconnect")
+                identifyEmitter()
             }
 
             s.on("reminder_update") { args ->
