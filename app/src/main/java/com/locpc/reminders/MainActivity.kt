@@ -29,6 +29,7 @@ import com.locpc.reminders.api.ApiManager
 import com.locpc.reminders.data.Reminder
 import com.locpc.reminders.ui.ReminderAdapter
 import com.locpc.reminders.util.NotificationHelper
+import com.locpc.reminders.worker.LocationWorker
 import com.locpc.reminders.worker.ReminderSyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +87,7 @@ class MainActivity : AppCompatActivity() {
 
         // Schedule background sync via WorkManager (runs every 15 min when app is closed)
         scheduleBackgroundSync()
+        schedulePeriodicLocationSync()
     }
 
     override fun onResume() {
@@ -251,6 +253,21 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun schedulePeriodicLocationSync() {
+        val request = PeriodicWorkRequestBuilder<LocationWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "periodic_location_sync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
     private fun performLogout() {
         scope.launch {
             try {
@@ -259,8 +276,9 @@ class MainActivity : AppCompatActivity() {
                 // Cancel all scheduled alarms before clearing session
                 NotificationHelper(this@MainActivity).cancelAllAlarms()
 
-                // Stop the background sync worker
+                // Stop the background sync worker and location worker
                 WorkManager.getInstance(this@MainActivity).cancelUniqueWork("reminder_sync")
+                WorkManager.getInstance(this@MainActivity).cancelUniqueWork("periodic_location_sync")
 
                 // Clear locally cached reminders
                 getSharedPreferences("locpc_reminders", MODE_PRIVATE).edit()

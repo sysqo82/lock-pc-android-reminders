@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 import timber.log.Timber
 
 object NetworkClient {
-    private val cookieJar = SessionCookieJar(App.instance)
+    private val cookieJar by lazy { SessionCookieJar(App.instance) }
 
     private val okHttp: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {

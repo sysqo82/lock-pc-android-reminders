@@ -4,8 +4,13 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.JobIntentService
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkManager
 import com.locpc.reminders.service.LocationService
 import com.locpc.reminders.service.ReminderSyncService
+import com.locpc.reminders.worker.LocationWorker
 import timber.log.Timber
 
 class RemoteCommandReceiver : BroadcastReceiver() {
@@ -14,8 +19,20 @@ class RemoteCommandReceiver : BroadcastReceiver() {
             ACTION_LOCATE_DEVICE -> {
                 Timber.d("RemoteCommandReceiver: Locate device command received")
                 if (context != null) {
-                    val locationIntent = Intent(context, LocationService::class.java)
-                    context.startForegroundService(locationIntent)
+                    val appContext = context.applicationContext ?: context
+                    val request = OneTimeWorkRequestBuilder<LocationWorker>()
+                        .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                        .build()
+                    try {
+                        WorkManager.getInstance(appContext)
+                            .enqueueUniqueWork(
+                                "location_update",
+                                ExistingWorkPolicy.REPLACE,
+                                request
+                            )
+                    } catch (e: Exception) {
+                        Timber.e(e, "RemoteCommandReceiver: Failed to enqueue LocationWorker")
+                    }
                 }
             }
 

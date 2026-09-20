@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -51,7 +52,15 @@ class SocketService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Timber.d("SocketService: onStartCommand")
-        startForeground(NOTIFICATION_ID, createNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                createNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification())
+        }
 
         if (ApiManager.isLoggedIn()) {
             val deviceId = LocationHelper(this).getDeviceId()
