@@ -61,7 +61,7 @@ class App : Application() {
 
     companion object {
         lateinit var instance: App
-            private set
+            internal set
 
         const val CHANNEL_REMINDERS = "reminders_channel"
         const val CHANNEL_LOCATION = "location_channel"

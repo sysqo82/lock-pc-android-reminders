@@ -1,6 +1,7 @@
 package com.locpc.reminders.util
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -19,15 +20,20 @@ class LocationHelper(private val context: Context) {
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
+    @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): Triple<Double, Double, Float>? = suspendCancellableCoroutine { continuation ->
         if (!hasLocationPermission()) {
             Timber.w("Location permission not granted")
-            continuation.resume(null)
+            if (continuation.isActive) {
+                continuation.resume(null)
+            }
             return@suspendCancellableCoroutine
         }
 
         try {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                if (!continuation.isActive) return@addOnSuccessListener
+
                 if (location != null) {
                     continuation.resume(Triple(location.latitude, location.longitude, location.accuracy))
                 } else {
@@ -40,25 +46,33 @@ class LocationHelper(private val context: Context) {
                         .build()
                     fusedLocationClient.getCurrentLocation(request, cts.token)
                         .addOnSuccessListener { fresh ->
-                            if (fresh != null) {
-                                continuation.resume(Triple(fresh.latitude, fresh.longitude, fresh.accuracy))
-                            } else {
-                                Timber.w("Fresh location also null")
-                                continuation.resume(null)
+                            if (continuation.isActive) {
+                                if (fresh != null) {
+                                    continuation.resume(Triple(fresh.latitude, fresh.longitude, fresh.accuracy))
+                                } else {
+                                    Timber.w("Fresh location also null")
+                                    continuation.resume(null)
+                                }
                             }
                         }
                         .addOnFailureListener { exception ->
                             Timber.e(exception, "Failed to get fresh location")
-                            continuation.resumeWithException(exception)
+                            if (continuation.isActive) {
+                                continuation.resumeWithException(exception)
+                            }
                         }
                 }
             }.addOnFailureListener { exception ->
                 Timber.e(exception, "Failed to get location")
-                continuation.resumeWithException(exception)
+                if (continuation.isActive) {
+                    continuation.resumeWithException(exception)
+                }
             }
-        } catch (e: SecurityException) {
-            Timber.e(e, "Security exception while getting location")
-            continuation.resumeWithException(e)
+        } catch (e: Exception) {
+            Timber.e(e, "Exception while getting location")
+            if (continuation.isActive) {
+                continuation.resumeWithException(e)
+            }
         }
     }
 
