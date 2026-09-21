@@ -32,21 +32,31 @@ class LocationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Timber.d("LocationService: onStartCommand called")
 
-        // Post foreground notification with location type on Android 10+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                createForegroundNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, createForegroundNotification())
+        try {
+            // Post foreground notification with location type on Android 10+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    createForegroundNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, createForegroundNotification())
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "LocationService: Exception calling startForeground")
         }
 
         // Start tracking location
         startLocationTracking()
 
         return START_STICKY
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        super.onTimeout(startId, fgsType)
+        Timber.w("LocationService: onTimeout called")
+        stopSelf(startId)
     }
 
     private fun createForegroundNotification(): Notification {
