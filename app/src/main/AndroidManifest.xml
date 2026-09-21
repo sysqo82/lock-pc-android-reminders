@@ -11,8 +11,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <!-- Required for foregroundServiceType="dataSync" (SocketService) on Android 14+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.BIND_JOB_SERVICE" />
@@ -48,11 +49,15 @@
             android:theme="@style/Theme.LockPCReminders" />
 
         <!-- Persistent Socket.IO service — keeps the connection alive in background.
-             Uses dataSync type, appropriate for maintaining a persistent network socket. -->
+             Uses remoteMessaging type, appropriate for maintaining a persistent network socket. -->
         <service
             android:name=".service.SocketService"
-            android:foregroundServiceType="dataSync"
-            android:exported="false" />
+            android:foregroundServiceType="remoteMessaging"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent socket connection for receiving remote location commands and reminders" />
+        </service>
 
         <!-- Foreground Location Service -->
         <service
